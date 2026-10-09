@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BBA Student Attendance Tracker</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom smooth transitions */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col font-sans transition-colors duration-200">
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app" class="flex-grow flex flex-col">
+        <!-- Content dynamically injected via JS -->
+    </div>
+
+    <!-- JAVASCRIPT APP LOGIC -->
+    <script>
+        // --- STATE MANAGEMENT ---
+        const State = {
+            currentView: 'auth', // 'auth', 'dashboard', 'profile'
+            authMode: 'signin', // 'signin', 'signup'
+            user: JSON.parse(localStorage.getItem('bba_user')) || null,
+            courses: JSON.parse(localStorage.getItem('bba_courses')) || [
+                { id: '1', name: 'Principles of Management', attended: 22, total: 28 },
+                { id: '2', name: 'Financial Accounting', attended: 18, total: 26 },
+                { id: '3', name: 'Business Economics', attended: 25, total: 30 },
+                { id: '4', name: 'Business Communication', attended: 14, total: 20 }
+            ],
+            darkMode: localStorage.getItem('bba_dark') === 'true',
+            forgotModalOpen: false,
+            editCourseId: null
+        };
+
+        // Initialize Dark Mode class on HTML root
+        function updateTheme() {
+            const html = document.documentElement;
+            if (State.darkMode) {
+                html.classList.add('dark');
+                localStorage.setItem('bba_dark', 'true');
+            } else {
+                html.classList.remove('dark');
+                localStorage.setItem('bba_dark', 'false');
+            }
+        }
+        updateTheme();
+
+        // Save courses to localStorage
+        function saveCourses() {
+            localStorage.setItem('bba_courses', JSON.stringify(State.courses));
+        }
+
+        // Save user to localStorage
+        function saveUser() {
+            localStorage.setItem('bba_user', JSON.stringify(State.user));
+            if (State.user) {
+                State.currentView = 'dashboard';
+            } else {
+                State.currentView = 'auth';
+            }
+            render();
+        }
+
+        // --- RENDER CONTROLLER ---
+        function render() {
+            const app = document.getElementById('app');
+            app.innerHTML = '';
+
+            if (!State.user) {
+                app.innerHTML = renderAuthView();
+            } else {
+                // Layout with Navbar for logged-in users
+                app.innerHTML = `
+                    ${renderNavbar()}
+                    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 fade-in">
+                        ${State.currentView === 'dashboard' ? renderDashboardView() : renderProfileView()}
+                    </main>
+                    ${renderFooter()}
+                `;
+            }
+            attachEventHandlers();
+        }
+
+        // --- VIEWS ---
+
+        function renderNavbar() {
+            return `
+                <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30 shadow-xs">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                        <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('dashboard')">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-indigo-500/20">
+                                <i class="fa-solid fa-graduation-cap"></i>
+                            </div>
+                            <div>
+                                <h1 class="font-bold text-lg leading-tight tracking-tight">Narmada College</h1>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">BBA Attendance Tracker</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <button onclick="toggleDarkMode()" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition" title="Toggle Theme">
+                                <i class="fa-solid ${State.darkMode ? 'fa-sun text-amber-400' : 'fa-moon text-indigo-600'}"></i>
+                            </button>
+                            
+                            <div class="flex items-center space-x-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+                                <button onclick="switchView('${State.currentView === 'dashboard' ? 'profile' : 'dashboard'}')" 
+                                    class="flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-medium transition ${State.currentView === 'profile' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}">
+                                    <div class="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-bold text-xs">
+                                        ${State.user.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <span class="hidden sm:inline">${State.user.name}</span>
+                                </button>
+                                <button onclick="logout()" class="p-2.5 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition" title="Sign Out">
+                                    <i class="fa-solid fa-right-from-bracket"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+            `;
+        }
+
+        function renderAuthView() {
+            return `
+                <div class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-50 via-slate-50 to-blue-100 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
+                    <div class="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-800 p-8 fade-in relative overflow-hidden">
+                        
+                        <!-- Top Accent Bar -->
+                        <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-600"></div>
+
+                        <div class="text-center mb-8">
+                            <div class="w-14 h-14 bg-indigo-600 text-white rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-lg shadow-indigo-500/30 mb-4">
+                                <i class="fa-solid fa-graduation-cap"></i>
+                            </div>
+                            <h2 class="text-2xl font-bold tracking-tight">Narmada College BBA</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Student Attendance Portal & 75% Rule Calculator</p>
+                        </div>
+
+                        <!-- Tab Selector -->
+                        <div class="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 mb-6">
+                            <button onclick="setAuthMode('signin')" class="flex-1 py-2 text-sm font-semibold rounded-lg transition ${State.authMode === 'signin' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}">
+                                Sign In
+                            </button>
+                            <button onclick="setAuthMode('signup')" class="flex-1 py-2 text-sm font-semibold rounded-lg transition ${State.authMode === 'signup' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}">
+                                Sign Up
+                            </button>
+                        </div>
+
+                        ${State.authMode === 'signin' ? `
+                            <form onsubmit="handleSignIn(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Email Address</label>
+                                    <div class="relative">
+                                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400"><i class="fa-solid fa-envelope"></i></span>
+                                        <input type="email" id="signin-email" required placeholder="student@narmadacollege.edu" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition">
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Password</label>
+                                        <button type="button" onclick="openForgotModal()" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium">Forgot Password?</button>
+                                    </div>
+                                    <div class="relative">
+                                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400"><i class="fa-solid fa-lock"></i></span>
+                                        <input type="password" id="signin-pass" required placeholder="••••••••" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition">
+                                    </div>
+                                </div>
+                                <button type="submit" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition">
+                                    Sign In to Portal
+                                </button>
+                            </form>
+                        ` : `
+                            <form onsubmit="handleSignUp(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Full Name</label>
+                                    <div class="relative">
+                                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400"><i class="fa-solid fa-user"></i></span>
+                                        <input type="text" id="signup-name" required placeholder="Aarav Sharma" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Email Address</label>
+                                    <div class="relative">
+                                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400"><i class="fa-solid fa-envelope"></i></span>
+                                        <input type="email" id="signup-email" required placeholder="student@narmadacollege.edu" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Password</label>
+                                    <div class="relative">
+                                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400"><i class="fa-solid fa-lock"></i></span>
+                                        <input type="password" id="signup-pass" required placeholder="••••••••" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition">
+                                    </div>
+                                </div>
+                                <button type="submit" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition">
+                                    Create Account
+                                </button>
+                            </form>
+                        `}
+                    </div>
+
+                    <!-- Forgot Password Modal -->
+                    ${State.forgotModalOpen ? `
+                        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                            <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl fade-in">
+                                <h3 class="text-lg font-bold mb-2">Reset Password</h3>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Enter your registered email address and we'll send you instructions to reset your password.</p>
+                                <input type="email" id="forgot-email" placeholder="student@narmadacollege.edu" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm mb-4 focus:outline-none focus:border-indigo-500">
+                                <div class="flex space-x-3">
+                                    <button onclick="closeForgotModal()" class="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-semibold rounded-xl transition">Cancel</button>
+                                    <button onclick="submitForgotPassword()" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition">Send Link</button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderDashboardView() {
+            // Overall statistics
+            let totalClassesAll = State.courses.reduce((acc, c) => acc + c.total, 0);
+            let totalAttendedAll = State.courses.reduce((acc, c) => acc + c.attended, 0);
+            let overallPct = totalClassesAll > 0 ? ((totalAttendedAll / totalClassesAll) * 100).toFixed(1) : 0;
+            let safeCoursesCount = State.courses.filter(c => c.total > 0 && (c.attended / c.total) * 100 >= 75).length;
+
+            return `
+                <div class="space-y-6">
+                    <!-- Welcome & Quick Stats Banner -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="md:col-span-2 bg-gradient-to-br from-indigo-600 to-blue-700 text-white p-6 rounded-2xl shadow-lg shadow-indigo-500/20 relative overflow-hidden flex flex-col justify-between">
+                            <div class="absolute right-0 bottom-0 translate-x-6 translate-y-6 text-indigo-500/20 text-9xl pointer-events-none">
+                                <i class="fa-solid fa-chart-pie"></i>
+                            </div>
+                            <div>
+                                <span class="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold uppercase tracking-wider">BBA Semester Portal</span>
+                                <h2 class="text-2xl font-bold mt-3">Welcome back, ${State.user.name}!</h2>
+                                <p class="text-indigo-100 text-sm mt-1">Narmada College Zadeshwar, Bharuch • Maintain $\ge 75\%$ attendance.</p>
+                            </div>
+                            <div class="mt-6 flex items-center space-x-6">
+                                <div>
+                                    <div class="text-3xl font-extrabold">${overallPct}%</div>
+                                    <div class="text-xs text-indigo-200 uppercase tracking-wider font-medium">Overall Attendance</div>
+                                </div>
+                                <div class="border-l border-indigo-400/40 pl-6">
+                                    <div class="text-3xl font-extrabold">${safeCoursesCount}/${State.courses.length}</div>
+                                    <div class="text-xs text-indigo-200 uppercase tracking-wider font-medium">Safe Courses</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Add Course Card -->
+                        <div class="md:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xs flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-bold text-lg mb-1"><i class="fa-solid fa-book-medical text-indigo-600 mr-2"></i>Add New Course</h3>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Input your course title to track your daily attendance record.</p>
+                            </div>
+                            <form onsubmit="handleAddCourse(event)" class="space-y-3">
+                                <input type="text" id="new-course-name" required placeholder="Course Name (e.g. Marketing Management)" class="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500">
+                                <div class="flex space-x-2">
+                                    <input type="number" id="new-course-attended" min="0" required placeholder="Attended" class="w-1/2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500">
+                                    <input type="number" id="new-course-total" min="1" required placeholder="Total Conducted" class="w-1/2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500">
+                                </div>
+                                <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition shadow-sm">
+                                    Add Course
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Courses Grid & Attendance Analysis -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-bold text-lg">Your Subjects & Attendance Status</h3>
+                            <span class="text-xs font-semibold px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Target: 75% Rule</span>
+                        </div>
+
+                        ${State.courses.length === 0 ? `
+                            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center">
+                                <div class="w-16 h-16 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full flex items-center justify-center text-2xl mx-auto mb-4">
+                                    <i class="fa-solid fa-folder-open"></i>
+                                </div>
+                                <h4 class="font-bold text-base">No courses added yet</h4>
+                                <p class="text-xs text-slate-500 mt-1">Add your BBA subjects above to start calculating your attendance percentage.</p>
+                            </div>
+                        ` : `
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                ${State.courses.map(course => {
+                                    let pct = course.total > 0 ? ((course.attended / course.total) * 100).toFixed(1) : 0;
+                                    let isSafe = pct >= 75;
+                                    
+                                    // Bunk or Recovery Calculation
+                                    let calcText = '';
+                                    let calcClass = '';
+                                    if (isSafe) {
+                                        // Safe classes to bunk: (Attended / 0.75) - Total
+                                        let safeBunks = Math.floor((course.attended / 0.75) - course.total);
+                                        if (safeBunks > 0) {
+                                            calcText = `You can safely bunk <strong>${safeBunks}</strong> ${safeBunks === 1 ? 'class' : 'classes'}.`;
+                                            calcClass = 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50';
+                                        } else {
+                                            calcText = `Attendance is safe, but don't miss the next class!`;
+                                            calcClass = 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50';
+                                        }
+                                    } else {
+                                        // Classes needed for 75%: (0.75 * Total - Attended) / 0.25
+                                        let needed = Math.ceil((0.75 * course.total - course.attended) / 0.25);
+                                        calcText = `Attend next <strong>${needed}</strong> ${needed === 1 ? 'class' : 'classes'} consecutively to reach 75%.`;
+                                        calcClass = 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/50';
+                                    }
+
+                                    return `
+                                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                                            <div>
+                                                <div class="flex items-start justify-between">
+                                                    <div>
+                                                        <h4 class="font-bold text-base text-slate-800 dark:text-slate-100">${course.name}</h4>
+                                                        <p class="text-xs text-slate-500 mt-0.5">Attended ${course.attended} of ${course.total} classes</p>
+                                                    </div>
+                                                    <div class="flex items-center space-x-1">
+                                                        <button onclick="openEditCourse('${course.id}')" class="p-2 text-slate-400 hover:text-indigo-600 transition" title="Edit Course">
+                                                            <i class="fa-solid fa-pen text-xs"></i>
+                                                        </button>
+                                                        <button onclick="deleteCourse('${course.id}')" class="p-2 text-slate-400 hover:text-rose-500 transition" title="Delete Course">
+                                                            <i class="fa-solid fa-trash text-xs"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Percentage & Progress Bar -->
+                                                <div class="mt-4 flex items-end justify-between">
+                                                    <div>
+                                                        <span class="text-xs text-slate-400 uppercase font-semibold">Percentage</span>
+                                                        <div class="text-2xl font-black ${isSafe ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}">
+                                                            ${pct}%
+                                                        </div>
+                                                    </div>
+                                                    <span class="px-2.5 py-1 rounded-lg text-xs font-semibold ${isSafe ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'}">
+                                                        ${isSafe ? '<i class="fa-solid fa-circle-check mr-1"></i> Safe (>= 75%)' : '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Shortage (< 75%)'}
+                                                    </span>
+                                                </div>
+
+                                                <div class="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full mt-3 overflow-hidden">
+                                                    <div class="h-full rounded-full transition-all duration-500 ${isSafe ? 'bg-emerald-500' : 'bg-rose-500'}" style="width: ${Math.min(pct, 100)}%;"></div>
+                                                </div>
+
+                                                <!-- Bunk/Recovery Advice Box -->
+                                                <div class="mt-4 p-3 rounded-xl border text-xs leading-relaxed ${calcClass}">
+                                                    <i class="fa-solid fa-lightbulb mr-1.5"></i> ${calcText}
+                                                </div>
+                                            </div>
+
+                                            <!-- Quick Action Buttons -->
+                                            <div class="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
+                                                <button onclick="quickUpdate('${course.id}', 'attended')" class="py-2 px-3 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-semibold rounded-xl transition border border-emerald-200/60 dark:border-emerald-900/60 flex items-center justify-center space-x-1.5">
+                                                    <i class="fa-solid fa-plus text-[10px]"></i><span>Attended Lecture</span>
+                                                </button>
+                                                <button onclick="quickUpdate('${course.id}', 'missed')" class="py-2 px-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-semibold rounded-xl transition border border-rose-200/60 dark:border-rose-900/60 flex items-center justify-center space-x-1.5">
+                                                    <i class="fa-solid fa-xmark text-[10px]"></i><span>Missed Lecture</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        `}
+                    </div>
+
+                    <!-- Edit Course Modal -->
+                    ${State.editCourseId ? renderEditModal() : ''}
+                </div>
+            `;
+        }
+
+        function renderEditModal() {
+            let course = State.courses.find(c => c.id === State.editCourseId);
+            if (!course) return '';
+            return `
+                <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl fade-in">
+                        <h3 class="text-lg font-bold mb-4">Edit Course</h3>
+                        <form onsubmit="handleEditCourse(event, '${course.id}')" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Course Name</label>
+                                <input type="text" id="edit-name" required value="${course.name}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500">
+                            </div>
+                            <div class="flex space-x-2">
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Attended</label>
+                                    <input type="number" id="edit-attended" min="0" required value="${course.attended}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500">
+                                </div>
+                                <div class="w-1/2">
+                                    <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Total</label>
+                                    <input type="number" id="edit-total" min="1" required value="${course.total}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:border-indigo-500">
+                                </div>
+                            </div>
+                            <div class="flex space-x-3 pt-2">
+                                <button type="button" onclick="closeEditModal()" class="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-semibold rounded-xl transition">Cancel</button>
+                                <button type="submit" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderProfileView() {
+            return `
+                <div class="max-w-xl mx-auto space-y-6">
+                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs">
+                        <div class="flex items-center space-x-4 pb-6 border-b border-slate-100 dark:border-slate-800">
+                            <div class="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl shadow-md shadow-indigo-500/20">
+                                ${State.user.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold">${State.user.name}</h3>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">${State.user.email}</p>
+                                <span class="inline-block mt-2 px-2.5 py-0.5 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-md">BBA Department Student</span>
+                            </div>
+                        </div>
+
+                        <div class="py-6 space-y-4">
+                            <h4 class="font-bold text-sm uppercase tracking-wider text-slate-400">Account Preferences</h4>
+                            <div class="flex items-center justify-between py-2">
+                                <div>
+                                    <div class="font-semibold text-sm">Dark Appearance</div>
+                                    <div class="text-xs text-slate-500">Toggle dark mode interface theme</div>
+                                </div>
+                                <button onclick="toggleDarkMode()" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-semibold transition">
+                                    ${State.darkMode ? 'Disable Dark Mode' : 'Enable Dark Mode'}
+                                </button>
+                            </div>
+                            <div class="flex items-center justify-between py-2 border-t border-slate-100 dark:border-slate-800">
+                                <div>
+                                    <div class="font-semibold text-sm text-rose-500">Reset All Data</div>
+                                    <div class="text-xs text-slate-500">Clear all courses and attendance records</div>
+                                </div>
+                                <button onclick="resetData()" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 rounded-xl text-xs font-semibold transition">
+                                    Reset Courses
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                            <button onclick="logout()" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl text-sm transition shadow-sm">
+                                <i class="fa-solid fa-right-from-bracket mr-2"></i>Sign Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFooter() {
+            return `
+                <footer class="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-6 mt-12 text-center text-xs text-slate-500">
+                    <p>Narmada College, Zadeshwar, Bharuch • BBA Program Attendance Portal</p>
+                </footer>
+            `;
+        }
+
+        // --- CONTROLLER ACTIONS & EVENT HANDLERS ---
+
+        function switchView(view) {
+            State.currentView = view;
+            render();
+        }
+
+        function setAuthMode(mode) {
+            State.authMode = mode;
+            render();
+        }
+
+        function toggleDarkMode() {
+            State.darkMode = !State.darkMode;
+            updateTheme();
+            render();
+        }
+
+        function handleSignIn(e) {
+            e.preventDefault();
+            const email = document.getElementById('signin-email').value;
+            // Mock sign in, extract name from email prefix or default
+            let namePart = email.split('@')[0];
+            let formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+            State.user = { name: formattedName, email: email };
+            saveUser();
+        }
+
+        function handleSignUp(e) {
+            e.preventDefault();
+            const name = document.getElementById('signup-name').value;
+            const email = document.getElementById('signup-email').value;
+            State.user = { name: name, email: email };
+            saveUser();
+        }
+
+        function logout() {
+            State.user = null;
+            localStorage.removeItem('bba_user');
+            render();
+        }
+
+        function openForgotModal() {
+            State.forgotModalOpen = true;
+            render();
+        }
+
+        function closeForgotModal() {
+            State.forgotModalOpen = false;
+            render();
+        }
+
+        function submitForgotPassword() {
+            const email = document.getElementById('forgot-email').value;
+            if (email) {
+                alert('Password reset link has been simulated and sent to ' + email);
+                closeForgotModal();
+            } else {
+                alert('Please enter a valid email address.');
+            }
+        }
+
+        function handleAddCourse(e) {
+            e.preventDefault();
+            const name = document.getElementById('new-course-name').value;
+            const attended = parseInt(document.getElementById('new-course-attended').value);
+            const total = parseInt(document.getElementById('new-course-total').value);
+
+            if (attended > total) {
+                alert('Attended classes cannot exceed total classes conducted.');
+                return;
+            }
+
+            const newCourse = {
+                id: Date.now().toString(),
+                name: name,
+                attended: attended,
+                total: total
+            };
+
+            State.courses.push(newCourse);
+            saveCourses();
+            render();
+        }
+
+        function quickUpdate(id, type) {
+            const course = State.courses.find(c => c.id === id);
+            if (!course) return;
+
+            if (type === 'attended') {
+                course.attended += 1;
+                course.total += 1;
+            } else if (type === 'missed') {
+                course.total += 1;
+            }
+            saveCourses();
+            render();
+        }
+
+        function deleteCourse(id) {
+            if (confirm('Are you sure you want to delete this course?')) {
+                State.courses = State.courses.filter(c => c.id !== id);
+                saveCourses();
+                render();
+            }
+        }
+
+        function openEditCourse(id) {
+            State.editCourseId = id;
+            render();
+        }
+
+        function closeEditModal() {
+            State.editCourseId = null;
+            render();
+        }
+
+        function handleEditCourse(e, id) {
+            e.preventDefault();
+            const name = document.getElementById('edit-name').value;
+            const attended = parseInt(document.getElementById('edit-attended').value);
+            const total = parseInt(document.getElementById('edit-total').value);
+
+            if (attended > total) {
+                alert('Attended classes cannot exceed total classes conducted.');
+                return;
+            }
+
+            const course = State.courses.find(c => c.id === id);
+            if (course) {
+                course.name = name;
+                course.attended = attended;
+                course.total = total;
+                saveCourses();
+            }
+            closeEditModal();
+        }
+
+        function resetData() {
+            if (confirm('Are you sure you want to reset all courses?')) {
+                State.courses = [];
+                saveCourses();
+                render();
+            }
+        }
+
+        function attachEventHandlers() {
+            // Placeholder for any dynamic binding if needed
+        }
+
+        // Initial Render
+        render();
+    </script>
+</body>
+</html>
